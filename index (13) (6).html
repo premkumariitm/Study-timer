@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parchment Pomodoro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Caprasimo&family=Inter:wght@300;400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+            background-color: #f4f1ea;
+            color: #1c1917;
+        }
+        .paper-texture {
+            background-color: #fdfaf0;
+            background-image: url("https://www.transparenttextures.com/patterns/natural-paper.png");
+        }
+        .font-caprasimo {
+            font-family: 'Caprasimo', cursive;
+        }
+        .timer-shadow {
+            text-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+        }
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+        .cursor-edit {
+            cursor: text;
+        }
+        textarea::placeholder {
+            color: rgba(28, 25, 23, 0.1);
+        }
+        @keyframes pulse-soft {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.9; }
+        }
+        .animate-pulse-soft {
+            animation: pulse-soft 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@^19.2.4",
+        "react-dom/client": "https://esm.sh/react-dom@^19.2.4/client"
+      }
+    }
+    </script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="module">
+        import React, { useState, useEffect, useCallback, useRef } from 'react';
+        import ReactDOM from 'react-dom/client';
+
+        // --- Constants ---
+        const TimerMode = {
+            POMODORO: 'Focus',
+            SHORT_BREAK: 'Short Break',
+            LONG_BREAK: 'Long Break'
+        };
+
+        const TIMER_CONFIG = {
+            [TimerMode.POMODORO]: 25 * 60,
+            [TimerMode.SHORT_BREAK]: 5 * 60,
+            [TimerMode.LONG_BREAK]: 15 * 60,
+        };
+
+        const COLORS = {
+            [TimerMode.POMODORO]: 'text-amber-900',
+            [TimerMode.SHORT_BREAK]: 'text-emerald-800',
+            [TimerMode.LONG_BREAK]: 'text-cyan-800',
+        };
+
+        // --- Components ---
+
+        const PaperSheet = ({ children, className = "" }) => {
+            return React.createElement('div', {
+                className: `paper-texture shadow-xl border border-stone-200/40 rounded-sm relative overflow-hidden ${className}`
+            }, 
+                React.createElement('div', { className: "relative z-10 h-full" }, children)
+            );
+        };
+
+        const NoteArea = () => {
+            const [content, setContent] = useState('');
+            return React.createElement('div', { className: "flex items-center justify-center bg-transparent" },
+                React.createElement('textarea', {
+                    value: content,
+                    onChange: (e) => setContent(e.target.value),
+                    placeholder: "Write your thoughts here...",
+                    className: "w-[600px] h-[300px] bg-transparent border-none outline-none font-caprasimo text-2xl text-stone-700 resize-none p-12 leading-relaxed",
+                    spellCheck: false
+                })
+            );
+        };
+
+        const BigTimer = ({ seconds, mode, isActive, isAlarming, onToggle, onStopAlarm, onTimeChange }) => {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = seconds % 60;
+
+            const handleMinutesChange = (e) => {
+                const val = e.target.value.replace(/\D/g, '');
+                const m = parseInt(val) || 0;
+                const safeM = Math.min(m, 999);
+                onTimeChange(safeM * 60 + remainingSeconds);
+            };
+
+            const handleSecondsChange = (e) => {
+                const val = e.target.value.replace(/\D/g, '');
+                const s = parseInt(val) || 0;
+                const safeS = Math.min(s, 59);
+                onTimeChange(minutes * 60 + safeS);
+            };
+
+            const formatValue = (val) => val.toString().padStart(2, '0');
+
+            const timerDisplay = isActive 
+                ? React.createElement('span', { className: "text-8xl md:text-[11rem] tracking-tighter leading-none" }, 
+                    `${formatValue(minutes)}:${formatValue(remainingSeconds)}`
+                  )
+                : React.createElement('div', { className: "flex items-center text-8xl md:text-[11rem] tracking-tighter leading-none gap-2" },
+                    React.createElement('input', {
+                        type: "text",
+                        inputMode: "numeric",
+                        value: formatValue(minutes),
+                        onChange: handleMinutesChange,
+                        className: "w-[3.5ch] bg-stone-200/40 border-none outline-none text-center focus:ring-0 p-4 hover:bg-stone-200/70 rounded-3xl transition-all cursor-edit",
+                        title: "Edit minutes"
+                    }),
+                    React.createElement('span', { className: "opacity-20 -translate-y-2" }, ":"),
+                    React.createElement('input', {
+                        type: "text",
+                        inputMode: "numeric",
+                        value: formatValue(remainingSeconds),
+                        onChange: handleSecondsChange,
+                        className: "w-[3.5ch] bg-stone-200/40 border-none outline-none text-center focus:ring-0 p-4 hover:bg-stone-200/70 rounded-3xl transition-all cursor-edit",
+                        title: "Edit seconds"
+                    })
+                );
+
+            return React.createElement('div', { className: "flex flex-col items-center justify-center space-y-8" },
+                React.createElement('div', { className: `flex items-center font-sans font-black tabular-nums transition-colors duration-500 timer-shadow ${COLORS[mode]}` },
+                    timerDisplay
+                ),
+                isAlarming 
+                    ? React.createElement('button', {
+                        onClick: onStopAlarm,
+                        className: "px-14 py-4 rounded-2xl border-2 border-red-800 bg-red-800 text-stone-50 text-[13px] font-black uppercase tracking-[0.25em] transition-all animate-pulse-soft shadow-lg active:scale-95"
+                    }, 'Stop Alarm')
+                    : React.createElement('button', {
+                        onClick: onToggle,
+                        className: `px-14 py-4 rounded-2xl border-2 border-stone-800 text-[13px] font-black uppercase tracking-[0.25em] transition-all hover:bg-stone-800 hover:text-stone-50 active:scale-95 shadow-md ${isActive ? 'bg-stone-800 text-stone-50' : 'text-stone-800 bg-white/80 backdrop-blur-sm'}`
+                    }, isActive ? 'Pause' : 'Start Focus')
+            );
+        };
+
+        const App = () => {
+            const [mode, setMode] = useState(TimerMode.POMODORO);
+            const [configs, setConfigs] = useState(TIMER_CONFIG);
+            const [secondsLeft, setSecondsLeft] = useState(TIMER_CONFIG[TimerMode.POMODORO]);
+            const [isActive, setIsActive] = useState(false);
+            const [isAlarming, setIsAlarming] = useState(false);
+            
+            const timerRef = useRef(null);
+            const alarmAudioRef = useRef(null);
+            const alarmTimeoutRef = useRef(null);
+
+            const startAlarm = useCallback(() => {
+                setIsAlarming(true);
+                if (!alarmAudioRef.current) {
+                    // Sharp "keee keee" style beep
+                    alarmAudioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/951/951-preview.mp3');
+                    alarmAudioRef.current.loop = true;
+                }
+                alarmAudioRef.current.play().catch(() => {});
+                
+                // Auto stop after 30 seconds
+                alarmTimeoutRef.current = window.setTimeout(() => {
+                    stopAlarm();
+                }, 30000);
+            }, []);
+
+            const stopAlarm = useCallback(() => {
+                setIsAlarming(false);
+                if (alarmAudioRef.current) {
+                    alarmAudioRef.current.pause();
+                    alarmAudioRef.current.currentTime = 0;
+                }
+                if (alarmTimeoutRef.current) {
+                    window.clearTimeout(alarmTimeoutRef.current);
+                }
+            }, []);
+
+            const switchMode = useCallback((newMode) => {
+                stopAlarm();
+                setMode(newMode);
+                setSecondsLeft(configs[newMode]);
+                setIsActive(false);
+            }, [configs, stopAlarm]);
+
+            useEffect(() => {
+                if (isActive && secondsLeft > 0) {
+                    timerRef.current = window.setInterval(() => {
+                        setSecondsLeft((prev) => prev - 1);
+                    }, 1000);
+                } else if (secondsLeft === 0 && isActive) {
+                    setIsActive(false);
+                    if (timerRef.current) clearInterval(timerRef.current);
+                    startAlarm();
+                }
+
+                return () => {
+                    if (timerRef.current) clearInterval(timerRef.current);
+                };
+            }, [isActive, secondsLeft, startAlarm]);
+
+            const handleToggleTimer = () => {
+                if (isAlarming) stopAlarm();
+                setIsActive(!isActive);
+            };
+
+            const handleReset = () => {
+                stopAlarm();
+                setIsActive(false);
+                setSecondsLeft(configs[mode]);
+            };
+
+            const handleTimeChange = (newSeconds) => {
+                const safeSeconds = Math.max(0, newSeconds);
+                setSecondsLeft(safeSeconds);
+                setConfigs(prev => ({
+                    ...prev,
+                    [mode]: safeSeconds
+                }));
+            };
+
+            return React.createElement('div', { className: "min-h-screen p-4 flex flex-col items-center" },
+                React.createElement('nav', { className: "mt-6 mb-10 flex gap-8" },
+                    Object.values(TimerMode).map((m) => 
+                        React.createElement('button', {
+                            key: m,
+                            onClick: () => switchMode(m),
+                            className: `px-1 py-1 text-[10px] uppercase tracking-[0.3em] transition-all border-b-2 font-black ${
+                                mode === m ? 'border-stone-800 text-stone-800' : 'border-transparent text-stone-300 hover:text-stone-500'
+                            }`
+                        }, m)
+                    )
+                ),
+                React.createElement('div', { className: "w-full flex flex-col items-center gap-12" },
+                    React.createElement('section', { className: "flex flex-col items-center" },
+                        React.createElement(BigTimer, {
+                            seconds: secondsLeft,
+                            mode: mode,
+                            isActive: isActive,
+                            isAlarming: isAlarming,
+                            onToggle: handleToggleTimer,
+                            onStopAlarm: stopAlarm,
+                            onTimeChange: handleTimeChange
+                        }),
+                        React.createElement('button', {
+                            onClick: handleReset,
+                            className: "mt-6 text-[9px] font-bold uppercase tracking-widest text-stone-300 hover:text-stone-500 transition-colors"
+                        }, "Reset to default")
+                    ),
+                    React.createElement('section', { className: "flex justify-center mb-12" },
+                        React.createElement(PaperSheet, null, 
+                            React.createElement(NoteArea, null)
+                        )
+                    )
+                ),
+                React.createElement('footer', { className: "mt-auto py-6 text-stone-300 text-[9px] font-bold tracking-[0.4em] uppercase" }, "Parchment")
+            );
+        };
+
+        const container = document.getElementById('root');
+        if (container) {
+            const root = ReactDOM.createRoot(container);
+            root.render(React.createElement(App));
+        }
+    </script>
+</body>
+</html>
