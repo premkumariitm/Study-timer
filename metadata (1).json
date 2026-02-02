@@ -1,0 +1,19 @@
+
+{
+  "name": "Study Timer",
+  "short_name": "Study Timer",
+  "description": "Study focused !!",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#051a14",
+  "theme_color": "#10b981",
+  "icons": [
+    {
+      "src": "clock.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "requestFramePermissions": []
+}
